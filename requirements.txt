@@ -1,5 +1,6 @@
 accelerate==1.4.0
 blosc==1.11.2
+bitsandbytes
 cmake==3.25.0
 colorama==0.4.6
 colorlog==6.9.0
