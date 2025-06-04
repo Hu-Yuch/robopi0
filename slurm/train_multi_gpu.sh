@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #SBATCH --job-name=pg-vla
-SBATCH --output=logs/%A.out
-SBATCH --error=logs/%A.err
+#SBATCH --output=logs/%A.out
+#SBATCH --error=logs/%A.err
 #SBATCH --time=71:59:59
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:8
@@ -25,7 +25,7 @@ export HF_DOWNLOAD_TIMEOUT=600  # 增加下载超时时间到10分钟
 # 备用镜像设置
 export TRANSFORMERS_OFFLINE=0
 export HF_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/hugging-face-models
-export HUGGINGFACE_HUB_CACHE=$HOME/.cache/huggingface/hub
+export WANDB_BASE_URL=https://api.bandw.top
 
 # GPU check
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"

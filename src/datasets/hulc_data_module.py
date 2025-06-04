@@ -29,9 +29,11 @@ class HulcDataModule(pl.LightningDataModule):
         transforms: DictConfig = DEFAULT_TRANSFORM,
         shuffle_val: bool = False,
         language_data_dir = None,
+        combine_datasets: bool = True,
         **kwargs: Dict,
     ):
         super().__init__()
+        self.combine_datasets = combine_datasets
         self.datasets_cfg = datasets
         self.train_datasets = None
         self.val_datasets = None
@@ -141,52 +143,79 @@ class HulcDataModule(pl.LightningDataModule):
         #self.val_qa_dataset = CalvinDataset(root = self.language_data_dir, instructions_path = self.val_dir, split = 'validation')
 
     def train_dataloader(self):
-        train_dataloaders = {
-            key: DataLoader(
-                dataset,
-                batch_size=dataset.batch_size,
-                num_workers=dataset.num_workers,
-                pin_memory=True,
-                shuffle=True,
-                prefetch_factor=2,
-            )
-            for key, dataset in self.train_datasets.items()
-        }
-        # train_dataloaders['vqa'] = DataLoader(
-        #         self.train_qa_dataset,
-        #         batch_size=dataset.batch_size,
-        #         num_workers=dataset.num_workers,
-        #         pin_memory=True,
-        #         shuffle=True,
-        #         prefetch_factor=2,
-        #     )
+        if self.combine_datasets:
+            train_dataloaders = {
+                key: DataLoader(
+                    dataset,
+                    batch_size=dataset.batch_size,
+                    num_workers=dataset.num_workers,
+                    pin_memory=True,
+                    shuffle=True,
+                    prefetch_factor=2,
+                )
+                for key, dataset in self.train_datasets.items()
+            }
+            # train_dataloaders['vqa'] = DataLoader(
+            #         self.train_qa_dataset,
+            #         batch_size=dataset.batch_size,
+            #         num_workers=dataset.num_workers,
+            #         pin_memory=True,
+            #         shuffle=True,
+            #         prefetch_factor=2,
+            #     )
 
-        combined_train_loaders = CombinedLoader(train_dataloaders, "max_size_cycle")
-        return combined_train_loaders
+            combined_train_loaders = CombinedLoader(train_dataloaders, "max_size_cycle")
+            return combined_train_loaders
+        else:
+            train_dataloaders = {
+                key: DataLoader(
+                    dataset,
+                    batch_size=dataset.batch_size,
+                    num_workers=dataset.num_workers,
+                    pin_memory=True,
+                    shuffle=True,
+                    prefetch_factor=2,
+                )
+                for key, dataset in self.train_datasets.items()
+            }
+            return train_dataloaders
+
 
 
     def val_dataloader(self):
-        val_dataloaders = {
-            key: DataLoader(
-                dataset,
-                batch_size=dataset.batch_size,
-                num_workers=dataset.num_workers,
-                pin_memory=True,
-            )
-            for key, dataset in self.val_datasets.items()
-        }
+        if self.combine_datasets:
+            val_dataloaders = {
+                key: DataLoader(
+                    dataset,
+                    batch_size=dataset.batch_size,
+                    num_workers=dataset.num_workers,
+                    pin_memory=True,
+                )
+                for key, dataset in self.val_datasets.items()
+            }
 
-        # val_dataloaders['vqa'] = DataLoader(
-        #         self.val_qa_dataset,
-        #         batch_size=dataset.batch_size,
-        #         num_workers=dataset.num_workers,
-        #         pin_memory=True,
-        #         shuffle=True,
-        #         prefetch_factor=2,
-        #     )
+            # val_dataloaders['vqa'] = DataLoader(
+            #         self.val_qa_dataset,
+            #         batch_size=dataset.batch_size,
+            #         num_workers=dataset.num_workers,
+            #         pin_memory=True,
+            #         shuffle=True,
+            #         prefetch_factor=2,
+            #     )
 
-        combined_val_loaders = CombinedLoader(val_dataloaders, "max_size_cycle")
-        return combined_val_loaders
+            combined_val_loaders = CombinedLoader(val_dataloaders, "max_size_cycle")
+            return combined_val_loaders
+        else:
+            val_dataloaders = {
+                key: DataLoader(
+                    dataset,
+                    batch_size=dataset.batch_size,
+                    num_workers=dataset.num_workers,
+                    pin_memory=True,
+                )
+                for key, dataset in self.val_datasets.items()
+            }
+            return val_dataloaders
 
 
 

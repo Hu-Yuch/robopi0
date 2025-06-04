@@ -1,5 +1,7 @@
 defaults:
   - datamodule: calvin
+  - /callbacks/rollout/tasks@tasks: new_playtable_tasks
+  - annotations: new_playtable_validation
 hydra:
   run:
     dir: ${log_dir}
@@ -10,23 +12,32 @@ name: ${data.train.dataset_names}_robobrain_plan_2${horizon_steps}_${flow_sampli
 device: cuda
 n_nodes: 1
 seed: 42
-pretrained_model_path: /root/.cache/huggingface/hub/models--BAAI--RoboBrain/snapshots/e7e94674bedb708ba0842de8117c0fe1a6a3f061
+pretrained_model_path: /cephfs/shared/hyc/pretrained_model_weights/robobrain/hub/models--BAAI--RoboBrain/snapshots/e7e94674bedb708ba0842de8117c0fe1a6a3f061
 load_pretrained_weights: True
-resume_checkpoint_path: /cephfs/cjyao/code/3dpi0/log/train/calvin_robobrain_plan_210_beta/2025-05-30_15-43_42/checkpoint/step2685.pt
+test_checkpoint_path: /cephfs/cjyao/code/3dpi0/log/train/calvin_robobrain_plan_210_beta/2025-05-30_15-43_42/checkpoint/step2685.pt
+eval_fold: /cephfs/cjyao/code/3dpi0/log/eval_calvin
+resume_checkpoint_path:
 train_vlm: True
 action_expert_adaptive_mode:  # adaLN, adaLN-Zero, or None
 use_torch_compile: True
-use_bf16: True
+use_bf16: False
 use_amp: True
 quantize: False
 lora: False
 lora_r: 32
 lora_dropout: 0.0
-debug: False
 vision_zoe_path: ../pretrained/zoedepth-nyu-kitti
 ego3d_patch_reso: 2
 n_freqs: 8
 use_3d: False
+
+ep_len: 360
+num_sequences: 1000
+num_videos: 20
+lang_embeddings: null
+render: False
+log_wandb: True
+debug: False
 
 use_ema: False
 ema_decay: 0.99
@@ -38,8 +49,10 @@ swa_start: ${eval:'1550000 // ${global_batch_size} * 5'}
 swa_freq: ${eval:'1550000 // ${global_batch_size} // 4'}
 swa_device: cpu
 
-root_data_dir: /localssd/hyc/data/calvin/task_ABC_D
-#root_data_dir: /cephfs/shared/hyc/data/calvin/task_ABC_D
+
+gpu_id: 0
+#root_data_dir: /localssd/hyc/data/calvin/task_ABC_D
+root_data_dir: /cephfs/shared/hyc/data/calvin/task_ABC_D
 lang_folder: lang_clip_resnet50
 num_workers: 8
 slurm: false
@@ -51,6 +64,15 @@ benchmark_name: calvin_abcd # calvin_abcd
 act_seq_len: 10
 obs_seq_len: 1
 window_sampling_strategy: 'geometric'
+multistep: 10
+
+eval_cfg_overwrite:
+  datamodule:
+    datasets:
+      lang_dataset:
+        lang_folder: lang_annotations
+  overwrite_module_cfg:
+    voltron_cache: /home/disk2/code/mdt_policy/pretrained_model_weights
 
 dataset_args:
   ########### debug/lora ################

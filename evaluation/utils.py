@@ -136,7 +136,17 @@ def get_default_model_and_env(train_folder, dataset_path, checkpoint, env=None, 
     data_module.prepare_data()
     data_module.setup()
     dataloader = data_module.val_dataloader()
-    dataset = dataloader.dataset.datasets["lang"]
+    # Try different ways to access the dataset
+    try:
+        # First try accessing through loaders attribute
+        dataset = dataloader.loaders["lang"].dataset
+    except AttributeError:
+        try:
+            # Then try accessing directly
+            dataset = dataloader["lang"].dataset
+        except:
+            # Finally try accessing through dataloaders
+            dataset = dataloader.dataloaders["lang"].dataset
     device = torch.device(f"cuda:{device_id}")
 
     if lang_embeddings is None:

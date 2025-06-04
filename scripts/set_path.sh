@@ -16,6 +16,7 @@ VLA_LOG_DIR=${LOG_DIR:-$DEFAULT_LOG_DIR}  # Use user input or default if input i
 # Export to current session
 export VLA_DATA_DIR="$VLA_DATA_DIR"
 export VLA_LOG_DIR="$VLA_LOG_DIR"
+export HF_HOME=/cephfs/shared/hyc/pretrained_model_weights/robobrain/
 
 # Confirm the paths with the user
 echo "Data directory set to: $VLA_DATA_DIR"

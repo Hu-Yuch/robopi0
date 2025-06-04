@@ -13,6 +13,8 @@ from src.model.paligemma.siglip import SiglipVisionModel, LlavaOnevisionMultiMod
 import hydra
 import torch
 from torch import nn
+from src.robobrain.vision_encoder.siglip_encoder import SigLipImageProcessor
+from transformers import AutoTokenizer, AutoProcessor
 
 from src.model.kv_cache import KVCache
 from src.model.vla.modules import (
@@ -229,7 +231,7 @@ class PiZeroRobo(nn.Module, NoSyncBase):
         for name, param in self.multi_modal_projector.named_parameters():
             if "lora_" in name:
                 params.append(param)
-        params.extend(self.trainable_lora_gemma_parameters)
+        params.extend(self.trainable_lora_qwen_parameters)
         return params
 
     @property
@@ -241,10 +243,10 @@ class PiZeroRobo(nn.Module, NoSyncBase):
         return qwen_parameters
 
     @property
-    def trainable_lora_gemma_parameters(self):
+    def trainable_lora_qwen_parameters(self):
         gemma_parameters = []
         for name, param in self.joint_model.mixtures["vlm"].named_parameters():
-            if not self._check_gemma_unused_parameter_by_name(name):
+            if not self._check_qwen_unused_parameter_by_name(name):
                 if "lora_" in name:
                     gemma_parameters.append(param)
         return gemma_parameters
@@ -467,6 +469,7 @@ class PiZeroRobo(nn.Module, NoSyncBase):
             cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
             cur_new_input_embeds = []
             cur_new_labels = []
+            #print("num_images", num_images)
 
             for i in range(num_images + 1):
                 cur_new_input_embeds.append(cur_input_embeds_no_im[i])
@@ -1060,7 +1063,7 @@ class PiZeroRobo(nn.Module, NoSyncBase):
         return torch.mean((v_psi - d_psi) ** 2)
 
 
-class PiZero3DInference(PiZeroRobo):
+class PiZeroRoboInference(PiZeroRobo):
     def __init__(self, cfg, use_ddp: bool = False):
         super().__init__(cfg)
         self.multistep = 0
@@ -1068,12 +1071,14 @@ class PiZero3DInference(PiZeroRobo):
         self.tokenizer = AutoTokenizer.from_pretrained(
             cfg.pretrained_model_path, padding_side="right"
         )
-        self.processor = VLAProcessor(
-            self.tokenizer,
-            num_image_tokens=cfg.vision.config.num_image_tokens,
-            max_seq_len=cfg.max_seq_len,
-            tokenizer_padding=cfg.tokenizer_padding,
-        )
+        # self.processor = VLAProcessor(
+        #     self.tokenizer,
+        #     num_image_tokens=cfg.vision.config.num_image_tokens,
+        #     max_seq_len=cfg.max_seq_len,
+        #     tokenizer_padding=cfg.tokenizer_padding,
+        # )
+        self.image_processor = SigLipImageProcessor()
+        self.processor = AutoProcessor.from_pretrained("BAAI/RoboBrain")
         self.dtype = None
         self.deviced = None
 
@@ -1082,7 +1087,8 @@ class PiZero3DInference(PiZeroRobo):
 
     def preprocess_batch(self, obs, goal, split_mask: bool, sample_fm_time: bool):
         images = obs["rgb_obs"]['rgb_static'].to(torch.uint8).to('cpu')
-        images = images.squeeze(0)
+        images = images.squeeze(1)
+        pixel = self.image_processor.preprocess(images=images, return_tensors="pt")
         proprios = obs['robot_obs']
         # texts = [
         #     text.decode("utf-8") for text in batch["task"]["language_instruction"]
@@ -1090,24 +1096,38 @@ class PiZero3DInference(PiZeroRobo):
         # print("images", images.shape)
         # print("propios", proprios.shape)
         # print("actions", actions.shape)
-        texts = goal
+        #texts = goal
+        texts = []
         depth = obs["depth_obs"]['depth_static']
         #images = einops.rearrange(
         #    images, "B T H W C -> B (T C) H W"
         #)  # remove cond_steps dimension
-        model_inputs = self.processor(text=texts, images=images)
+        for i in range(len(goal)):
+            #print("texts", texts[i])
+            texts.append('<|im_start|>user'+'<image>' + goal[i] + '<|im_end|><|im_start|>assistant')
+        #import time
+        #time.sleep(10000)
+           
+        output_ids = self.processor.tokenizer(texts, return_tensors="pt",
+                add_special_tokens=True,
+                padding="longest",
+                truncation=True,
+                max_length=1000
+            )
+
+        causal_mask = output_ids["attention_mask"]
 
         # build causal mask and position ids for action
-        causal_mask, vlm_position_ids, proprio_position_ids, action_position_ids = (
+        attention_mask, vlm_position_ids, proprio_position_ids, action_position_ids = (
             self.build_causal_mask_and_position_ids(
-                model_inputs["attention_mask"], self.dtype
+                causal_mask, self.dtype
             )
         )
 
         inputs = {
-            "input_ids": model_inputs["input_ids"],
-            "pixel_values": model_inputs["pixel_values"].to(self.dtype),
-            "depth": depth.to(self.dtype),
+            "input_ids": output_ids["input_ids"],
+            "pixel_values": pixel["pixel_values"].to(self.dtype),
+            #"depth": depth.to(self.dtype),
             "vlm_position_ids": vlm_position_ids,
             "proprio_position_ids": proprio_position_ids,
             "action_position_ids": action_position_ids,
@@ -1132,9 +1152,7 @@ class PiZero3DInference(PiZeroRobo):
     def step(self,
         input_ids: torch.LongTensor,
         pixel_values: torch.FloatTensor,
-        depth: torch.FloatTensor,
-        image_text_proprio_mask: torch.FloatTensor,
-        action_mask: torch.FloatTensor,
+        causal_mask: torch.FloatTensor,
         vlm_position_ids: torch.LongTensor,
         proprio_position_ids: torch.LongTensor,
         action_position_ids: torch.LongTensor,
@@ -1144,9 +1162,7 @@ class PiZero3DInference(PiZeroRobo):
             pred_action_seq = super().infer_action(
                 input_ids,
                 pixel_values,
-                depth,
-                image_text_proprio_mask,
-                action_mask,
+                causal_mask,
                 vlm_position_ids,
                 proprio_position_ids,
                 action_position_ids,
